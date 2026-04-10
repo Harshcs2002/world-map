@@ -115,7 +115,14 @@
           <button onclick="searchWorld()">Search</button>
         </div>
         <div id="search-results"></div>
-      </div>
+        
+        <div style="display: flex; gap: 8px; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--color-border);">
+          <button onclick="exportData()" style="flex: 1; padding: 6px; font-size: 0.75rem; font-weight: bold; background: #e2e8f0; color: #0f172a; border: none; border-radius: 4px; cursor: pointer;">💾 Export Data</button>
+          <label style="flex: 1; padding: 6px; font-size: 0.75rem; font-weight: bold; background: #e2e8f0; color: #0f172a; border: none; border-radius: 4px; cursor: pointer; text-align: center;">
+            📂 Import Data <input type="file" accept=".json, .txt" style="display:none;" onchange="importData(event)">
+          </label>
+        </div>
+        </div>
 
       <div class="filter-section">
         <div class="filter-title">
@@ -550,6 +557,58 @@ function updateDynamicFields() {
     function submitFill() { const input = document.getElementById('quiz-text-input'); input.disabled = true; const userAns = input.value.trim().toLowerCase().split(',').map(s=>s.trim()); const correctArr = currentCorrectAnswer.split(',').map(s=>s.trim()); let matches = 0; userAns.forEach(ua => { if(correctArr.some(ca => ca.includes(ua) || ua.includes(ca)) && ua.length > 2) matches++; }); const isCorrect = matches >= Math.ceil(correctArr.length / 2); showFeedback(isCorrect, currentCorrectAnswer.toUpperCase()); }
     function submitArrange() { const userOrder = arrangeQueue.join(','); const correctIds = currentCorrectAnswer.split(','); const correctNames = correctIds.map(id => places.find(p => p.id == id).name).join(' ➔ '); showFeedback(userOrder === currentCorrectAnswer, correctNames); }
     function nextQuestion() { qIndex++; loadQuestion(); }
+    // --- DATA EXPORT & IMPORT ENGINE ---
+    function exportData() {
+      const dataStr = localStorage.getItem('mySmartAtlas');
+      if (!dataStr || dataStr === "[]") return alert("Your map is empty! Add some places before exporting.");
+      
+      const blob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = "My_UPSC_Atlas_Backup.json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const importedData = JSON.parse(e.target.result);
+          if (Array.isArray(importedData)) {
+            if(confirm(`Are you sure? This will add ${importedData.length} places to your map. (It will not delete your current places, just add to them!)`)) {
+              
+              // Merge old data with new data, preventing duplicates by ID
+              const existingIds = new Set(places.map(p => p.id));
+              importedData.forEach(newPlace => {
+                if(!existingIds.has(newPlace.id)) {
+                  places.push(newPlace);
+                }
+              });
+
+              localStorage.setItem('mySmartAtlas', JSON.stringify(places));
+              alert("Data imported successfully!");
+              
+              // Refresh the map and filters
+              initFilters();
+              renderApp();
+            }
+          } else {
+            alert("This doesn't look like a valid Atlas backup file.");
+          }
+        } catch(err) {
+          alert("Error reading file. Make sure it is the correct .json file.");
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = ''; // Reset the input so you can import the same file again if needed
+    }
 
     initFilters(); renderApp();
   </script>
