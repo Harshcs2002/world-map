@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Smart World Atlas - Ultimate UPSC GIS</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root {
+      --color-bg: #f8fafc; --color-panel: #ffffff; --color-text: #0f172a;
+      --color-subtext: #475569; --color-border: #cbd5e1; --color-primary: #2563eb;
+      --color-primary-hover: #1d4ed8; --color-success: #16a34a; 
+      --color-danger: #dc2626; --color-warning: #d97706;
+    }
+    body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; background: var(--color-bg); color: var(--color-text); overflow: hidden; }
+    * { box-sizing: border-box; }
+    
+    #main-wrapper { display: flex; width: 100vw; height: 100vh; position: relative; }
+    #map { flex-grow: 1; height: 100vh; z-index: 1; background: #e0f2fe; }
+
+    .sidebar { width: 360px; min-width: 360px; background: var(--color-panel); border-right: 1px solid var(--color-border); display: flex; flex-direction: column; z-index: 500; box-shadow: 2px 0 10px rgba(0,0,0,0.05); transition: margin-left 0.3s ease; }
+    .sidebar.collapsed { margin-left: -360px; }
+
+    .toggle-sidebar-btn { position: absolute; bottom: 20px; left: 20px; z-index: 9999; padding: 12px 18px; background: var(--color-primary); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: 0.2s; }
+    .toggle-sidebar-btn:hover { background: var(--color-primary-hover); transform: translateY(-2px); }
+
+    .sidebar-header { padding: 20px 20px 10px 20px; background: var(--color-panel); }
+    .sidebar-header h2 { margin: 0 0 10px 0; font-size: 1.4rem; color: var(--color-primary); }
+    
+    .nav-buttons { display: flex; gap: 8px; margin-bottom: 15px; }
+    .nav-btn { flex: 1; padding: 8px; font-size: 13px; font-weight: bold; border: 1px solid var(--color-primary); border-radius: 6px; background: white; color: var(--color-primary); cursor: pointer; transition: 0.2s; }
+    .nav-btn.active { background: var(--color-primary); color: white; }
+
+    .search-box { display: flex; gap: 8px; margin-bottom: 10px; }
+    .search-box input { flex: 1; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 0.9rem; }
+    .search-box button { background: var(--color-primary); color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+    #search-results { max-height: 150px; overflow-y: auto; background: white; border-radius: 6px; margin-bottom: 10px; display: none; border: 1px solid var(--color-border); }
+    .search-result-item { padding: 8px 12px; font-size: 0.85rem; border-bottom: 1px solid #f1f5f9; cursor: pointer; }
+    .search-result-item:hover { background: #f0fdf4; color: var(--color-success); font-weight: bold; }
+.filter-section { padding: 0 20px 10px 20px; border-bottom: 1px solid var(--color-border); background: var(--color-panel); }
+    .filter-title { font-size: 0.8rem; font-weight: bold; color: var(--color-subtext); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+    .filter-actions button { background: none; border: none; color: var(--color-primary); font-size: 0.75rem; cursor: pointer; font-weight: bold; padding: 0; margin-left: 8px; }
+    .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; max-height: 110px; overflow-y: auto; padding-right: 5px; margin-bottom: 10px; }
+    .filter-chip { font-size: 0.75rem; padding: 4px 8px; border: 1px solid var(--color-border); border-radius: 12px; background: white; color: var(--color-subtext); cursor: pointer; user-select: none; transition: 0.15s; }
+    .filter-chip.active { background: var(--color-success); color: white; border-color: var(--color-success); font-weight: bold; }
+    
+    .place-list { flex-grow: 1; overflow-y: auto; padding: 15px; background: var(--color-bg); }
+    .group-header { font-size: 0.85rem; color: var(--color-subtext); border-bottom: 2px solid var(--color-border); padding-bottom: 4px; margin: 15px 0 10px 0; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
+    .group-header:first-child { margin-top: 0; }
+    .place-item { padding: 12px; border: 1px solid var(--color-border); border-radius: 8px; margin-bottom: 8px; cursor: pointer; transition: 0.2s; background: var(--color-panel); }
+    .place-item:hover { border-color: var(--color-primary); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .place-item h4 { margin: 0 0 4px 0; display: flex; align-items: center; gap: 8px; font-size: 0.95rem; }
+    .place-item p { margin: 0; font-size: 0.8rem; color: var(--color-subtext); }
+
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
+    .modal { background: var(--color-panel); padding: 25px; border-radius: 12px; width: 480px; max-width: 90%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); max-height: 90vh; overflow-y: auto; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+    .modal-header h3 { margin: 0; font-size: 1.2rem; }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; margin-bottom: 4px; font-weight: 600; font-size: 0.85rem; color: var(--color-subtext); }
+    .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px; border: 1px solid var(--color-border); border-radius: 6px; font-family: inherit; font-size: 0.9rem; }
+    
+    #dynamic-fields-container { background: #f0fdf4; padding: 15px; border-radius: 8px; border: 1px solid #bbf7d0; margin-bottom: 15px; display: none; }
+    #dynamic-fields-container label { color: var(--color-success); }
+    .help-text { font-size: 0.75rem; color: var(--color-subtext); margin-top: 4px; display: block; }
+    .wiki-btn { background: #f3f4f6; border: 1px solid #d1d5db; color: #374151; padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; cursor: pointer; float: right; margin-top: -30px; position: relative; z-index: 2; font-weight: bold; }
+    
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--color-border); }
+    button { padding: 9px 18px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; }
+    .btn-cancel { background: #f1f5f9; color: var(--color-subtext); }
+    .btn-save { background: var(--color-primary); color: white; }
+
+    .custom-popup h3 { margin: 0 0 8px 0; font-size: 1.2rem; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; color: white; margin-bottom: 12px; margin-right: 6px;}
+    .custom-popup p { margin: 0 0 12px 0; font-size: 0.9rem; color: var(--color-subtext); line-height: 1.5; }
+    .relational-data { font-size: 0.85rem; background: #f8fafc; padding: 10px; border-radius: 6px; margin-bottom: 15px; border-left: 3px solid var(--color-success); }
+    .popup-actions { display: flex; gap: 8px; }
+    .popup-btn { padding: 6px 10px; font-size: 0.85rem; border-radius: 4px; color: white; text-align: center; flex-grow: 1; cursor: pointer; border: none; font-weight: bold; }
+    .btn-edit { background: var(--color-warning); }
+    .btn-delete { background: var(--color-danger); }
+
+    .quiz-area { display: none; padding: 15px; height: 100%; flex-direction: column; overflow-y: auto; background: var(--color-bg); }
+    .quiz-hud { display: flex; justify-content: space-between; font-weight: bold; color: var(--color-subtext); margin-bottom: 15px; font-size: 0.9rem; }
+    .quiz-q-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 15px; }
+    .quiz-q-text { font-size: 1.05rem; line-height: 1.5; margin: 0 0 15px 0; font-weight: 600; color: var(--color-text); }
+    .quiz-options { display: flex; flex-direction: column; gap: 10px; }
+    .quiz-opt-btn { background: #f1f5f9; border: 2px solid #e2e8f0; padding: 12px; text-align: left; border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 0.95rem; color: var(--color-text); font-weight: 500;}
+    .quiz-opt-btn:hover:not(:disabled) { border-color: var(--color-primary); background: #eff6ff; }
+    .quiz-opt-btn.correct { background: #dcfce7; border-color: var(--color-success); color: var(--color-success); }
+    .quiz-opt-btn.wrong { background: #fee2e2; border-color: var(--color-danger); color: var(--color-danger); }
+    .quiz-menu-btn { width: 100%; padding: 12px; margin-bottom: 10px; background: white; border: 2px solid var(--color-primary); color: var(--color-primary); border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; text-align: left; display: flex; align-items: center; gap: 10px;}
+    .quiz-menu-btn:hover { background: var(--color-primary); color: white; }
+    .quiz-text-input { width: 100%; padding: 12px; border: 2px solid var(--color-border); border-radius: 8px; font-size: 1rem; margin-bottom: 10px; }
+    .quiz-submit-btn { width: 100%; padding: 12px; background: var(--color-primary); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    .arrange-container { display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; }
+    .arrange-item { padding: 10px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer; text-align: center; font-weight: bold; }
+    .arrange-item:hover { background: #e2e8f0; }
+    .arrange-target { min-height: 50px; border: 2px dashed var(--color-border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; background: #f8fafc; }
+    .arrange-target .arrange-item { background: var(--color-primary); color: white; border-color: var(--color-primary-hover); }
+    .quiz-feedback { margin-top: 15px; font-weight: bold; display: none; padding: 10px; border-radius: 6px; }
+    .quiz-next-btn { width: 100%; padding: 12px; background: var(--color-text); color: white; border: none; border-radius: 8px; font-weight: bold; display: none; cursor: pointer; margin-top: 15px;}
+  </style>
+</head>
+<body>
+  <div id="main-wrapper">
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <h2>🌍 My Atlas</h2>
+        <div class="nav-buttons">
+          <button class="nav-btn active" id="tab-explore" onclick="switchTab('explore')">Explore</button>
+          <button class="nav-btn" id="tab-quiz" onclick="switchTab('quiz')">Quiz Hub</button>
+        </div>
+        <div class="search-box" id="search-box-container">
+          <input type="text" id="search-input" placeholder="Search the world...">
+          <button onclick="searchWorld()">Search</button>
+        </div>
+        <div id="search-results"></div>
+      </div>
+
+      <div class="filter-section">
+        <div class="filter-title">
+          <span>1. Map Sets</span>
+          <div class="filter-actions"><button onclick="toggleSet('ALL')">All</button><button onclick="toggleSet('NONE')">None</button></div>
+        </div>
+        <div class="filter-chips" id="filter-chips" style="max-height: 80px;"></div>
+        
+        <div class="filter-title" style="margin-top:10px;">
+          <span>2. Geographic Features</span>
+          <div class="filter-actions"><button onclick="toggleFeature('All')">Reset All</button></div>
+        </div>
+        <div class="filter-chips" id="feature-chips" style="max-height: 140px;"></div>
+      </div>
+      
+      <div class="place-list" id="place-list"></div>
+      
+      <div class="quiz-area" id="quiz-area">
+        <div id="quiz-start-screen">
+          <h3 style="margin-bottom: 15px; text-align: center;">Select Quiz Mode</h3>
+          <button class="quiz-menu-btn" onclick="startQuiz('upsc')">🏛️ UPSC Deep Dive<br><span style="font-size:0.75rem; font-weight:normal; display:block; width:100%;">Tests specific metadata and features.</span></button>
+          <button class="quiz-menu-btn" onclick="startQuiz('identify')">📍 Map Identification<br><span style="font-size:0.75rem; font-weight:normal; display:block; width:100%;">Type the name of the place.</span></button>
+          <button class="quiz-menu-btn" onclick="startQuiz('fill')">✍️ Fill in the Blanks<br><span style="font-size:0.75rem; font-weight:normal; display:block; width:100%;">Type bordering countries or waters.</span></button>
+          <button class="quiz-menu-btn" onclick="startQuiz('arrange')">🧭 Spatial Arrangement<br><span style="font-size:0.75rem; font-weight:normal; display:block; width:100%;">Order places North-South or West-East.</span></button>
+        </div>
+        
+        <div id="quiz-active-screen" style="display: none;">
+          <button onclick="switchTab('quiz')" style="background:none; border:none; color:var(--color-primary); cursor:pointer; padding:0; margin-bottom:10px; font-weight:bold;">← Back to Menu</button>
+          <div class="quiz-hud"><span id="quiz-progress">Question 1/5</span><span id="quiz-score">Score: 0</span></div>
+          <div class="quiz-q-card">
+            <p class="quiz-q-text" id="quiz-q-text">Loading...</p>
+            <div id="quiz-interactive-area"></div>
+            <div class="quiz-feedback" id="quiz-feedback"></div>
+            <button class="quiz-next-btn" id="quiz-next-btn" onclick="nextQuestion()">Next Question ➔</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="map"></div>
+    <button class="toggle-sidebar-btn" onclick="toggleSidebar()">👁️ Toggle Panel</button>
+  </div>
+
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">Add Location</h3>
+        <button style="background:none; border:none; font-size:1.5rem; cursor:pointer; padding:0; color:#94a3b8;" onclick="closeModal()">&times;</button>
+      </div>
+      <input type="hidden" id="place-id"><input type="hidden" id="place-lat"><input type="hidden" id="place-lng">
+      <div class="form-group"><label>Place Name</label><input type="text" id="place-name" placeholder="e.g., Alps, Sahara, Tokyo" required></div>
+      <div style="display: flex; gap: 10px;">
+        <div class="form-group" style="flex: 1;"><label>Set</label><select id="place-group"></select></div>
+        <div class="form-group" style="flex: 1;">
+          <label>Category</label>
+          <select id="place-category" onchange="updateDynamicFields()">
+            <option value="Select" disabled selected>-- Select --</option>
+            <option value="Country">Country</option><option value="City">City</option>
+            <option value="Mountain">Mountain</option><option value="Plateau">Plateau</option>
+            <option value="Lake">Lake</option><option value="River">River</option>
+            <option value="Waterfall">Waterfall</option><option value="Grassland">Grassland</option>
+            <option value="Sea">Sea</option><option value="Ocean">Ocean</option>
+            <option value="Gulf">Gulf</option><option value="Strait">Strait</option>
+            <option value="Island">Island</option><option value="Desert">Desert</option>
+          </select>
+        </div>
+      </div>
+      <div id="dynamic-fields-container"></div>
+      <div class="form-group" style="position:relative;"><label>Description & Facts</label>
+        <button class="wiki-btn" onclick="fetchWikipediaSummary()" type="button">🌐 Fetch Summary</button>
+        <textarea id="place-desc"></textarea>
+      </div>
+      <div class="modal-actions"><button class="btn-cancel" onclick="closeModal()">Cancel</button><button class="btn-save" onclick="savePlace()">Save</button></div>
+    </div>
+  </div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([20, 0], 3);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+
+    let places = JSON.parse(localStorage.getItem('mySmartAtlas')) || [];
+    let mapMarkers = {}; let geoJsonLayer; let currentMode = 'explore'; let tempSearchMarker = null;
+
+    const ALL_SETS = Array.from({length: 20}, (_, i) => `Set ${i+1}`); ALL_SETS.push('Ungrouped');
+    let activeSets = new Set(ALL_SETS);
+
+    const ALL_FEATURES = [
+      'Mountain', 'Fold', 'Fault', 'Volcanic', 'Lake', 'Normal Lake', 'Rift Lake', 'Desert', 'Warm Desert', 'Cold Desert', 
+      'Grassland', 'Tropical Grassland', 'Temperate Grassland', 'Country', 'Coastal', 'Landlocked', 'City', 'Capital City', 'Port City', 'Normal City',
+      'River', 'Waterfall', 'Sea', 'Ocean', 'Gulf', 'Strait', 'Plateau', 'Island', 'Equator', 'Tropic of Cancer', 'Tropic of Capricorn', 'Arctic Circle'
+    ];
+    let activeFeatures = new Set(['All']);
+
+    const REGIONS = {
+      Africa: ["Algeria","Angola","Benin","Botswana","Burkina Faso","Burundi","Cameroon","Chad","Congo","Djibouti","Egypt","Equatorial Guinea","Eritrea","Ethiopia","Gabon","Gambia","Ghana","Guinea","Kenya","Lesotho","Liberia","Libya","Madagascar","Malawi","Mali","Mauritania","Mauritius","Morocco","Mozambique","Namibia","Niger","Nigeria","Rwanda","Senegal","Seychelles","Sierra Leone","Somalia","South Africa","South Sudan","Sudan","Tanzania","Togo","Tunisia","Uganda","Zambia","Zimbabwe"],
+      Asia_MiddleEast: ["Afghanistan","Armenia","Azerbaijan","Bahrain","Bangladesh","Bhutan","Brunei","Cambodia","China","Cyprus","Georgia","India","Indonesia","Iran","Iraq","Israel","Japan","Jordan","Kazakhstan","Kuwait","Kyrgyzstan","Laos","Lebanon","Malaysia","Maldives","Mongolia","Myanmar","Nepal","North Korea","Oman","Pakistan","Philippines","Qatar","Saudi Arabia","Singapore","South Korea","Sri Lanka","Syria","Taiwan","Tajikistan","Thailand","Turkey","Turkmenistan","United Arab Emirates","Uzbekistan","Vietnam","Yemen"],
+      Europe: ["Albania","Andorra","Austria","Belarus","Belgium","Bosnia and Herzegovina","Bulgaria","Croatia","Czech Republic","Denmark","Estonia","Finland","France","Germany","Greece","Hungary","Iceland","Ireland","Italy","Latvia","Liechtenstein","Lithuania","Luxembourg","Malta","Moldova","Monaco","Montenegro","Netherlands","North Macedonia","Norway","Poland","Portugal","Romania","Russia","Serbia","Slovakia","Slovenia","Spain","Sweden","Switzerland","Ukraine","United Kingdom","Vatican City"],
+      Americas: ["Antigua and Barbuda","Argentina","Bahamas","Barbados","Belize","Bolivia","Brazil","Canada","Chile","Colombia","Costa Rica","Cuba","Dominica","Dominican Republic","Ecuador","El Salvador","Grenada","Guatemala","Guyana","Haiti","Honduras","Jamaica","Mexico","Nicaragua","Panama","Paraguay","Peru","Suriname","Trinidad and Tobago","United States","Uruguay","Venezuela"],
+      Oceania: ["Australia","Fiji","Kiribati","Marshall Islands","Micronesia","Nauru","New Zealand","Palau","Papua New Guinea","Samoa","Solomon Islands","Tonga","Tuvalu","Vanuatu"]
+    };
+    const MAJOR_WATERS = ["Pacific Ocean", "Atlantic Ocean", "Indian Ocean", "Arctic Ocean", "Southern Ocean", "Mediterranean Sea", "Red Sea", "Black Sea", "Caribbean Sea", "Arabian Sea", "South China Sea", "Gulf of Mexico", "Persian Gulf", "Baltic Sea", "North Sea"];
+    
+    const STATIC_LINES = {
+      'Equator': ["Ecuador", "Colombia", "Brazil", "Sao Tome and Principe", "Gabon", "Republic of the Congo", "Congo", "Democratic Republic of the Congo", "Uganda", "Kenya", "Somalia", "Maldives", "Indonesia", "Kiribati"],
+      'Tropic of Cancer': ["Mexico", "Bahamas", "Western Sahara", "Mauritania", "Mali", "Algeria", "Niger", "Libya", "Egypt", "Saudi Arabia", "United Arab Emirates", "Oman", "India", "Bangladesh", "Myanmar", "China", "Taiwan"],
+      'Tropic of Capricorn': ["Chile", "Argentina", "Paraguay", "Brazil", "Namibia", "Botswana", "South Africa", "Mozambique", "Madagascar", "Australia"],
+      'Arctic Circle': ["Norway", "Sweden", "Finland", "Russia", "United States of America", "Canada", "Denmark", "Iceland"]
+    };
+
+    fetch('https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json').then(res => res.json()).then(data => { geoJsonLayer = L.geoJSON(data, { style: { fillColor: 'transparent', weight: 0, fillOpacity: 0 } }).addTo(map); });
+
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); setTimeout(() => { map.invalidateSize(); }, 300); }
+
+    function initFilters() {
+      const select = document.getElementById('place-group'); const chipContainer = document.getElementById('filter-chips');
+      select.innerHTML = ''; chipContainer.innerHTML = '';
+      ALL_SETS.forEach(setName => {
+        const opt = document.createElement('option'); opt.value = setName; opt.textContent = setName; select.appendChild(opt);
+        const chip = document.createElement('div'); chip.className = `filter-chip ${activeSets.has(setName) ? 'active' : ''}`; chip.textContent = setName.replace('Set ', ''); if(setName === 'Ungrouped') chip.textContent = 'U';
+        chip.onclick = () => toggleSet(setName); chipContainer.appendChild(chip);
+      });
+
+      const featContainer = document.getElementById('feature-chips'); featContainer.innerHTML = '';
+      ALL_FEATURES.forEach(feat => {
+        const chip = document.createElement('div'); chip.className = `filter-chip ${activeFeatures.has(feat) || activeFeatures.has('All') ? 'active' : ''}`;
+        chip.textContent = feat; chip.onclick = () => toggleFeature(feat); featContainer.appendChild(chip);
+      });
+    }
+
+    function toggleSet(setName) {
+      if(setName === 'ALL') { activeSets = new Set(ALL_SETS); } else if(setName === 'NONE') { activeSets = new Set(); } 
+      else { if(activeSets.has(setName)) activeSets.delete(setName); else activeSets.add(setName); }
+      initFilters(); renderApp();
+    }
+
+    function toggleFeature(feat) {
+      if(feat === 'All') { activeFeatures = new Set(['All']); }
+      else {
+        activeFeatures.delete('All');
+        if(activeFeatures.has(feat)) activeFeatures.delete(feat); else activeFeatures.add(feat);
+        if(activeFeatures.size === 0) activeFeatures.add('All');
+      }
+      initFilters(); renderApp();
+    }
+
+    async function searchWorld() {
+      const query = document.getElementById('search-input').value.trim(); if (!query) return;
+      const resContainer = document.getElementById('search-results'); resContainer.innerHTML = '<div class="search-result-item">Searching...</div>'; resContainer.style.display = 'block';
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`); const data = await response.json();
+        resContainer.innerHTML = ''; if(data.length === 0) { resContainer.innerHTML = '<div class="search-result-item">No results found.</div>'; return; }
+        data.slice(0, 5).forEach(item => { const div = document.createElement('div'); div.className = 'search-result-item'; div.textContent = item.display_name; div.onclick = () => selectSearchResult(item.lat, item.lon, item.name || query); resContainer.appendChild(div); });
+      } catch(e) { resContainer.innerHTML = '<div class="search-result-item">Error searching.</div>'; }
+    }
+
+    function selectSearchResult(lat, lng, name) { document.getElementById('search-results').style.display = 'none'; document.getElementById('search-input').value = ''; map.flyTo([lat, lng], 6, { duration: 1.5 }); if(tempSearchMarker) map.removeLayer(tempSearchMarker); tempSearchMarker = L.marker([lat, lng]).addTo(map); setTimeout(() => { openAddModal(lat, lng, name); }, 1500); }
+    map.on('click', function(e) { if(currentMode === 'explore') openAddModal(e.latlng.lat, e.latlng.lng, ""); });
+function updateDynamicFields() {
+      const cat = document.getElementById('place-category').value; const container = document.getElementById('dynamic-fields-container'); container.innerHTML = ''; container.style.display = 'block';
+      if (cat === 'Mountain') { container.innerHTML = `<label>Mountain Type</label><select id="feature-type" style="margin-bottom:10px;"><option value="Fold">Fold</option><option value="Fault">Fault-block</option><option value="Volcanic">Volcanic</option></select><label>Countries it passes through</label><input type="text" id="rel-countries">`; } 
+      else if (cat === 'Lake') { container.innerHTML = `<label>Lake Type</label><select id="feature-type" style="margin-bottom:10px;"><option value="Normal Lake">Normal</option><option value="Rift Lake">Rift Lake</option></select><label>Countries it is in</label><input type="text" id="rel-countries">`; } 
+      else if (cat === 'Desert') { container.innerHTML = `<label>Desert Type</label><select id="feature-type" style="margin-bottom:10px;"><option value="Warm Desert">Warm Desert</option><option value="Cold Desert">Cold Desert</option></select><label>Countries it spans across</label><input type="text" id="rel-countries">`; } 
+      else if (cat === 'Grassland') { container.innerHTML = `<label>Grassland Type</label><select id="feature-type" style="margin-bottom:10px;"><option value="Tropical Grassland">Tropical Grassland</option><option value="Temperate Grassland">Temperate Grassland</option></select><label>Located in Country</label><input type="text" id="rel-countries">`; }
+      else if (cat === 'Country') { container.innerHTML = `<label>Is it Landlocked?</label><select id="is-landlocked" style="margin-bottom:10px;"><option value="Coastal">No (Coastal)</option><option value="Landlocked">Yes (Landlocked)</option></select><label>Bordering Countries</label><input type="text" id="rel-countries">`; } 
+      else if (cat === 'City') { container.innerHTML = `<label>City Type</label><select id="feature-type" style="margin-bottom:10px;"><option value="Normal City">Normal City</option><option value="Capital City">Capital City</option><option value="Port City">Port City</option></select><label>Located in Country</label><input type="text" id="rel-countries">`; } 
+      else if (['Sea', 'Ocean'].includes(cat)) { container.innerHTML = `<label>Bordering Countries</label><input type="text" id="rel-countries">`; } 
+      else if (['River'].includes(cat)) { container.innerHTML = `<label>Countries it flows through</label><input type="text" id="rel-countries" style="margin-bottom:10px;"><label>Mouth (Water Body?)</label><input type="text" id="rel-water">`; } 
+      else if (cat === 'Waterfall') { container.innerHTML = `<label>Located in Country</label><input type="text" id="rel-countries" style="margin-bottom:10px;"><label>Located on River</label><input type="text" id="rel-water">`; }
+      else if (['Gulf', 'Strait'].includes(cat)) { container.innerHTML = `<label>Located in Sea/Ocean?</label><input type="text" id="rel-water" style="margin-bottom:10px;"><label>Bordering Countries</label><input type="text" id="rel-countries">`; } 
+      else if (cat === 'Island') { container.innerHTML = `<label>Country it belongs to</label><input type="text" id="rel-countries" style="margin-bottom:10px;"><label>Nearby Ocean/Sea</label><input type="text" id="rel-water" style="margin-bottom:10px;"><label>Nearby Countries</label><input type="text" id="rel-nearby">`; } 
+      else if (cat === 'Plateau') { container.innerHTML = `<label>Countries it is in</label><input type="text" id="rel-countries">`; } 
+      else { container.style.display = 'none'; }
+    }
+
+    async function fetchWikipediaSummary() {
+      const name = document.getElementById('place-name').value.trim(); const descBox = document.getElementById('place-desc'); if(!name) return alert('Please type a Place Name first!'); descBox.value = "Fetching...";
+      try { const response = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`); const data = await response.json(); descBox.value = data.extract ? data.extract : "No summary available."; } catch (e) { descBox.value = "Could not find a summary."; }
+    }
+
+    function highlightCountries(countriesString) {
+      if(!geoJsonLayer) return; geoJsonLayer.setStyle({ fillColor: 'transparent', weight: 0, fillOpacity: 0 }); if(!countriesString) return;
+      const targets = countriesString.split(',').map(c => c.trim().toLowerCase());
+      const aliases = { 'usa': 'united states of america', 'us': 'united states of america', 'uk': 'united kingdom', 'russia': 'russian federation', 'uae': 'united arab emirates', 'congo': 'republic of the congo' };
+      geoJsonLayer.eachLayer(layer => {
+        const countryName = layer.feature.properties.name.toLowerCase(); let isMatch = false;
+        targets.forEach(t => { let s = aliases[t] || t; if (countryName.includes(s) || s.includes(countryName)) isMatch = true; });
+        if (isMatch) layer.setStyle({ fillColor: '#0f172a', fillOpacity: 0.4, weight: 2, color: '#1e293b' });
+      });
+    }
+
+    function clearHighlights() { if(geoJsonLayer) geoJsonLayer.setStyle({ fillColor: 'transparent', weight: 0, fillOpacity: 0 }); }
+    function clearAllMapData() { for (let id in mapMarkers) map.removeLayer(mapMarkers[id]); mapMarkers = {}; if(tempSearchMarker) map.removeLayer(tempSearchMarker); clearHighlights(); }
+    
+    function getCatColor(cat) { const c = { 'Country': '#8b5cf6', 'City': '#ef4444', 'Mountain': '#d97706', 'Plateau': '#b45309', 'Lake': '#0ea5e9', 'River': '#3b82f6', 'Waterfall': '#06b6d4', 'Sea': '#0284c7', 'Ocean': '#1e3a8a', 'Gulf': '#0f766e', 'Strait': '#0d9488', 'Island': '#10b981', 'Grassland': '#84cc16', 'Desert': '#fcd34d' }; return c[cat] || '#64748b'; }
+
+    function switchTab(tab) {
+      currentMode = tab;
+      document.getElementById('tab-explore').classList.toggle('active', tab === 'explore'); document.getElementById('tab-quiz').classList.toggle('active', tab === 'quiz');
+      document.getElementById('place-list').style.display = tab === 'explore' ? 'block' : 'none'; document.getElementById('search-box-container').style.display = tab === 'explore' ? 'flex' : 'none';
+      document.getElementById('quiz-area').style.display = tab === 'quiz' ? 'flex' : 'none';
+      document.querySelectorAll('.filter-section')[0].style.display = tab === 'explore' ? 'block' : 'none';
+      
+      if (tab === 'quiz') {
+        document.getElementById('quiz-start-screen').style.display = 'block'; document.getElementById('quiz-active-screen').style.display = 'none';
+        clearAllMapData(); 
+      } else { renderApp(); }
+    }
+
+    function renderApp() {
+      if (currentMode === 'quiz') return; 
+      clearAllMapData();
+      const listContainer = document.getElementById('place-list'); listContainer.innerHTML = '';
+      
+      // Static Lines rendering
+      let combinedStatic = [];
+      ['Equator', 'Tropic of Cancer', 'Tropic of Capricorn', 'Arctic Circle'].forEach(line => { if(activeFeatures.has(line) || activeFeatures.has('All')) combinedStatic.push(...STATIC_LINES[line]); });
+      if(combinedStatic.length > 0) highlightCountries(combinedStatic.join(','));
+
+      if(places.length === 0) return;
+      const groupedPlaces = {};
+      
+      places.forEach(p => { 
+        const group = p.group || 'Ungrouped'; 
+        if(!activeSets.has(group)) return; 
+        
+        // Multi-Select Feature Check
+        if(!activeFeatures.has('All')) {
+          let hasMatch = false;
+          if(activeFeatures.has(p.category)) hasMatch = true;
+          if(p.featureType && activeFeatures.has(p.featureType)) hasMatch = true;
+          if(p.isLandlocked && activeFeatures.has(p.isLandlocked)) hasMatch = true;
+          if(!hasMatch) return; 
+        }
+
+        if(!groupedPlaces[group]) groupedPlaces[group] = []; groupedPlaces[group].push(p); 
+      });
+
+      Object.keys(groupedPlaces).sort().forEach(group => {
+        const header = document.createElement('div'); header.className = 'group-header'; header.textContent = group; listContainer.appendChild(header);
+        groupedPlaces[group].forEach(place => {
+          const color = getCatColor(place.category); const icon = L.divIcon({ className: 'custom-pin', html: `<div style="background-color: ${color}; width: 18px; height: 18px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.4);"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
+          const marker = L.marker([place.lat, place.lng], { icon }).addTo(map);
+          
+          let relHtml = '';
+          if(place.featureType) relHtml += `<strong>Type:</strong> ${place.featureType}<br>`;
+          if(place.isLandlocked) relHtml += `<strong>Type:</strong> ${place.isLandlocked}<br>`;
+          if(place.relCountries) relHtml += `<strong>${place.category === 'Island' ? 'Belongs to' : 'Countries'}:</strong> ${place.relCountries}<br>`;
+          if(place.relWater) relHtml += `<strong>${place.category === 'Waterfall' ? 'River' : 'Water Body'}:</strong> ${place.relWater}<br>`;
+          if(place.relNearby) relHtml += `<strong>Nearby:</strong> ${place.relNearby}<br>`;
+          if(relHtml) relHtml = `<div class="relational-data">${relHtml}</div>`;
+
+          marker.bindPopup(`<div class="custom-popup"><h3>${place.name}</h3><span class="badge" style="background-color:${color}">${place.category}</span><span class="badge" style="background-color:#475569">${place.group}</span>${relHtml}<p>${place.description || ''}</p><div class="popup-actions"><button class="popup-btn btn-edit" onclick="openEdit(${place.id})">Edit</button><button class="popup-btn btn-delete" onclick="deletePlace(${place.id})">Delete</button></div></div>`);
+          marker.on('click', () => { if(currentMode === 'explore') { let toHighlight = place.relCountries || ''; if(place.relNearby) toHighlight += (toHighlight ? ',' : '') + place.relNearby; if(toHighlight) highlightCountries(toHighlight); else renderApp(); } });
+          mapMarkers[place.id] = marker;
+          
+          const li = document.createElement('div'); li.className = 'place-item'; li.innerHTML = `<h4><div style="width:12px; height:12px; border-radius:50%; background:${color};"></div>${place.name}</h4><p>${place.featureType || place.isLandlocked || place.category}</p>`;
+          li.onclick = () => { map.flyTo([place.lat, place.lng], 5, { duration: 1.2 }); marker.openPopup(); let toHighlight = place.relCountries || ''; if(place.relNearby) toHighlight += (toHighlight ? ',' : '') + place.relNearby; if(toHighlight) highlightCountries(toHighlight); };
+          listContainer.appendChild(li);
+        });
+      });
+    }
+
+    function openAddModal(lat, lng, defaultName) { clearHighlights(); document.getElementById('modal-title').innerText = 'Add Location'; document.getElementById('place-id').value = ''; document.getElementById('place-lat').value = lat; document.getElementById('place-lng').value = lng; document.getElementById('place-name').value = defaultName || ''; document.getElementById('place-category').value = 'Select'; document.getElementById('place-desc').value = ''; updateDynamicFields(); document.getElementById('modal-overlay').style.display = 'flex'; }
+    function closeModal() { document.getElementById('modal-overlay').style.display = 'none'; if(tempSearchMarker) map.removeLayer(tempSearchMarker); }
+    
+    function savePlace() {
+      const id = document.getElementById('place-id').value; const name = document.getElementById('place-name').value.trim(); const group = document.getElementById('place-group').value; const category = document.getElementById('place-category').value; const description = document.getElementById('place-desc').value.trim(); const lat = parseFloat(document.getElementById('place-lat').value); const lng = parseFloat(document.getElementById('place-lng').value);
+      const relC = document.getElementById('rel-countries'); const relW = document.getElementById('rel-water'); const relN = document.getElementById('rel-nearby'); const fType = document.getElementById('feature-type'); const isLL = document.getElementById('is-landlocked');
+      const relCountries = relC ? relC.value.trim() : null; const relWater = relW ? relW.value.trim() : null; const relNearby = relN ? relN.value.trim() : null; const featureType = fType ? fType.value : null; const isLandlocked = isLL ? isLL.value : null;
+      if(!name || category === 'Select') return alert("Name and Category required.");
+      const newP = { id: id ? parseInt(id) : Date.now(), lat, lng, name, group, category, description, relCountries, relWater, relNearby, featureType, isLandlocked };
+      if(id) places = places.map(p => p.id == id ? newP : p); else places.push(newP);
+      localStorage.setItem('mySmartAtlas', JSON.stringify(places)); closeModal(); renderApp();
+    }
+
+    function openEdit(id) {
+      const p = places.find(x => x.id === id); if(!p) return;
+      document.getElementById('modal-title').innerText = 'Edit Location'; document.getElementById('place-id').value = p.id; document.getElementById('place-lat').value = p.lat; document.getElementById('place-lng').value = p.lng; document.getElementById('place-name').value = p.name; document.getElementById('place-group').value = p.group || 'Ungrouped'; document.getElementById('place-category').value = p.category; document.getElementById('place-desc').value = p.description;
+      updateDynamicFields();
+      if(document.getElementById('rel-countries')) document.getElementById('rel-countries').value = p.relCountries || ''; if(document.getElementById('rel-water')) document.getElementById('rel-water').value = p.relWater || ''; if(document.getElementById('rel-nearby')) document.getElementById('rel-nearby').value = p.relNearby || ''; if(document.getElementById('feature-type')) document.getElementById('feature-type').value = p.featureType || ''; if(document.getElementById('is-landlocked')) document.getElementById('is-landlocked').value = p.isLandlocked || '';
+      map.closePopup(); document.getElementById('modal-overlay').style.display = 'flex';
+    }
+
+    function deletePlace(id) { if(confirm("Delete this location?")) { places = places.filter(p => p.id !== id); localStorage.setItem('mySmartAtlas', JSON.stringify(places)); clearHighlights(); map.closePopup(); renderApp(); } }
+// --- UPSC METADATA QUIZ ENGINE ---
+    let quizMode = 'upsc'; let quizPool = [], qIndex = 0, score = 0; let currentCorrectAnswer = null; let arrangeQueue = []; 
+
+    function getRegionForCountry(countryName) { const cleanName = countryName.trim().toLowerCase(); for (let region in REGIONS) { if (REGIONS[region].map(c => c.toLowerCase()).includes(cleanName)) return region; } return "Europe"; }
+    function generateUPSCOptions(correctString, type, category) {
+      if(!correctString) return ["A", "B", "C", "D"]; let options = [correctString];
+      
+      // Metadata specific distractors
+      if(type === 'mountainType') options.push("Fold", "Fault", "Volcanic");
+      if(type === 'lakeType') options.push("Normal Lake", "Rift Lake", "Glacial Lake");
+      if(type === 'desertType') options.push("Warm Desert", "Cold Desert", "Coastal Desert");
+      if(type === 'grasslandType') options.push("Tropical Grassland", "Temperate Grassland", "Alpine Grassland");
+      if(type === 'cityType') options.push("Normal City", "Capital City", "Port City");
+      if(type === 'landlocked') options.push("Coastal", "Landlocked");
+
+      if(type === 'water') {
+        let allWaters = [...new Set(places.filter(x => x.relWater).map(x => x.relWater).concat(MAJOR_WATERS))];
+        let fakes = allWaters.filter(w => w.toLowerCase() !== correctString.toLowerCase()).sort(() => 0.5 - Math.random());
+        options.push(fakes[0] || "Nile River", fakes[1] || "Amazon River", fakes[2] || "Mississippi River"); 
+      }
+      
+      if(type === 'countries') {
+        let correctArr = correctString.split(',').map(s => s.trim());
+        if(correctArr.length === 1) { let region = getRegionForCountry(correctArr[0]); let fakes = REGIONS[region].filter(c => c.toLowerCase() !== correctArr[0].toLowerCase()).sort(() => 0.5 - Math.random()); options.push(fakes[0], fakes[1], fakes[2]); } 
+        else { let region = getRegionForCountry(correctArr[0]); let pool = REGIONS[region].filter(c => !correctArr.map(x=>x.toLowerCase()).includes(c.toLowerCase())); let trick1 = [...correctArr]; trick1[trick1.length - 1] = pool[0] || "Brazil"; let trick2 = [...correctArr]; trick2[0] = pool[1] || "Japan"; let trick3 = [correctArr[0], pool[2], pool[3]].filter(Boolean); options.push(trick1.join(', ')); options.push(trick2.join(', ')); options.push(trick3.join(', ')); }
+      }
+
+      options = [...new Set(options)]; 
+      let backupPool = REGIONS["Europe"].concat(REGIONS["Asia_MiddleEast"]); 
+      while(options.length < 4) { options.push(backupPool[Math.floor(Math.random() * backupPool.length)]); options = [...new Set(options)]; }
+      return options.sort(() => 0.5 - Math.random());
+    }
+
+    function startQuiz(mode) {
+      quizMode = mode;
+      let validPlaces = places.filter(p => activeSets.has(p.group || 'Ungrouped'));
+      if(mode === 'upsc') { Object.keys(STATIC_LINES).forEach(line => { validPlaces.push({ isStatic: true, name: line, category: 'Line', relCountries: STATIC_LINES[line].join(', ') }); }); }
+      if(validPlaces.length < 4) return alert("You need at least 4 places/lines active in your filters to take a quiz!");
+      quizPool = validPlaces.sort(() => 0.5 - Math.random()).slice(0, 10); qIndex = 0; score = 0;
+      document.getElementById('quiz-start-screen').style.display = 'none'; document.getElementById('quiz-active-screen').style.display = 'block';
+      map.closePopup(); loadQuestion();
+    }
+
+    function drawQuizMarker(item) {
+      if(item.isStatic) return; 
+      const color = getCatColor(item.category); const icon = L.divIcon({ className: 'custom-pin', html: `<div style="background-color: ${color}; width: 18px; height: 18px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.4);"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
+      const marker = L.marker([item.lat, item.lng], { icon }).addTo(map); mapMarkers[item.id] = marker; 
+    }
+
+    function loadQuestion() {
+      document.getElementById('quiz-next-btn').style.display = 'none'; document.getElementById('quiz-feedback').style.display = 'none';
+      clearAllMapData(); // STRICT WIPE
+      
+      if(qIndex >= quizPool.length) {
+        document.getElementById('quiz-start-screen').style.display = 'block'; document.getElementById('quiz-active-screen').style.display = 'none';
+        alert(`Quiz Complete! You scored ${score} out of ${quizPool.length}.`); return;
+      }
+
+      const p = quizPool[qIndex];
+      document.getElementById('quiz-progress').innerText = `Question ${qIndex + 1}/${quizPool.length}`; document.getElementById('quiz-score').innerText = `Score: ${score}`;
+      const qText = document.getElementById('quiz-q-text'); const optContainer = document.getElementById('quiz-interactive-area'); optContainer.innerHTML = '';
+      
+      if (quizMode === 'upsc') {
+        let options = [];
+        
+        // Randomize whether to ask a map location question OR a feature metadata question
+        const askFeature = Math.random() > 0.5;
+
+        if(p.isStatic) {
+           qText.innerText = `Which of the following countries passes through the ${p.name}?`;
+           let correctC = STATIC_LINES[p.name][Math.floor(Math.random() * STATIC_LINES[p.name].length)];
+           currentCorrectAnswer = correctC; options = generateUPSCOptions(correctC, 'countries', p.category); highlightCountries(p.relCountries); map.flyTo([20, 0], 2, { duration: 1.5 });
+        } 
+        else if (askFeature && p.featureType) {
+            // METADATA QUESTIONS
+            qText.innerText = `Which of the following best classifies the ${p.category.toLowerCase()} '${p.name}'?`;
+            currentCorrectAnswer = p.featureType; 
+            options = generateUPSCOptions(p.featureType, p.category.toLowerCase() + 'Type', p.category);
+            map.flyTo([p.lat, p.lng], 5, { duration: 1.5 }); drawQuizMarker(p);
+        }
+        else if (askFeature && p.isLandlocked) {
+            qText.innerText = `Geographically, the country of '${p.name}' is classified as:`;
+            currentCorrectAnswer = p.isLandlocked; 
+            options = generateUPSCOptions(p.isLandlocked, 'landlocked', p.category);
+            map.flyTo([p.lat, p.lng], 5, { duration: 1.5 }); drawQuizMarker(p);
+        }
+        else {
+            // SPATIAL QUESTIONS
+            if(!p.relCountries && !p.relWater) { quizMode = 'identify'; loadQuestion(); return; }
+            if (['Mountain', 'Lake', 'Plateau', 'Desert', 'Grassland'].includes(p.category) && p.relCountries) { qText.innerText = `Which group of countries identifies the spread of the ${p.category} '${p.name}'?`; currentCorrectAnswer = p.relCountries; options = generateUPSCOptions(p.relCountries, 'countries', p.category); } 
+            else if (['Sea', 'Ocean', 'Country'].includes(p.category) && p.relCountries) { qText.innerText = `Which group shares a border with the ${p.category} '${p.name}'?`; currentCorrectAnswer = p.relCountries; options = generateUPSCOptions(p.relCountries, 'countries', p.category); } 
+            else if (['River'].includes(p.category)) { if(p.relWater && Math.random() > 0.5) { qText.innerText = `The river '${p.name}' ultimately drains into which body of water?`; currentCorrectAnswer = p.relWater; options = generateUPSCOptions(p.relWater, 'water', p.category); } else { qText.innerText = `Which combination correctly identifies the countries the river '${p.name}' flows through?`; currentCorrectAnswer = p.relCountries; options = generateUPSCOptions(p.relCountries, 'countries', p.category); } } 
+            else if (['Gulf', 'Strait'].includes(p.category) && p.relWater) { qText.innerText = `The ${p.category} '${p.name}' is located within which of the following?`; currentCorrectAnswer = p.relWater; options = generateUPSCOptions(p.relWater, 'water', p.category); } 
+            else if (['City'].includes(p.category) && p.relCountries) { qText.innerText = `The ${p.category.toLowerCase()} of '${p.name}' is located in which country?`; currentCorrectAnswer = p.relCountries; options = generateUPSCOptions(p.relCountries, 'countries', p.category); }
+            else if (p.category === 'Waterfall' && p.relWater) { qText.innerText = `The waterfall '${p.name}' is located on which river?`; currentCorrectAnswer = p.relWater; options = generateUPSCOptions(p.relWater, 'water', p.category); }
+            else if (p.category === 'Island') { qText.innerText = `Which country does the island '${p.name}' belong to?`; currentCorrectAnswer = p.relCountries || "Unknown"; options = generateUPSCOptions(currentCorrectAnswer, 'countries', p.category); }
+            map.flyTo([p.lat, p.lng], 5, { duration: 1.5 }); drawQuizMarker(p); if(p.relCountries) highlightCountries(p.relCountries);
+        }
+        
+        const div = document.createElement('div'); div.className = 'quiz-options';
+        options.forEach(opt => { const btn = document.createElement('button'); btn.className = 'quiz-opt-btn'; btn.innerText = opt; btn.onclick = () => submitUPSC(btn, opt); div.appendChild(btn); });
+        optContainer.appendChild(div); 
+      } 
+      else if (quizMode === 'identify') {
+        if(p.isStatic) { nextQuestion(); return; } 
+        qText.innerText = `What is the name of the ${p.category} marked on the map?`; currentCorrectAnswer = p.name.toLowerCase();
+        optContainer.innerHTML = `<input type="text" id="quiz-text-input" class="quiz-text-input" placeholder="Type the name here..."><button class="quiz-submit-btn" onclick="submitIdentify()">Submit Answer</button>`;
+        map.flyTo([p.lat, p.lng], 5, { duration: 1.5 }); drawQuizMarker(p);
+      }
+      else if (quizMode === 'fill') {
+        if(p.isStatic) { nextQuestion(); return; }
+        if(!p.relCountries && !p.relWater) { quizMode = 'identify'; loadQuestion(); return; }
+        if(p.relCountries) { qText.innerText = `List the countries associated with the ${p.category} '${p.name}'.`; currentCorrectAnswer = p.relCountries.toLowerCase(); } 
+        else { qText.innerText = `Which body of water is associated with the ${p.category} '${p.name}'?`; currentCorrectAnswer = p.relWater.toLowerCase(); }
+        optContainer.innerHTML = `<input type="text" id="quiz-text-input" class="quiz-text-input" placeholder="Type your answer here (comma separated if multiple)..."><button class="quiz-submit-btn" onclick="submitFill()">Submit Answer</button>`;
+        map.flyTo([p.lat, p.lng], 5, { duration: 1.5 }); drawQuizMarker(p); if(p.relCountries) highlightCountries(p.relCountries);
+      }
+      else if (quizMode === 'arrange') {
+        const arrangeSet = places.filter(x => activeSets.has(x.group || 'Ungrouped') && !x.isStatic).sort(() => 0.5 - Math.random()).slice(0, 4); const modeNS = Math.random() > 0.5;
+        if(arrangeSet.length < 4) { alert("Not enough coordinate locations for Arrange Quiz."); return; }
+        qText.innerText = modeNS ? `Arrange these places from NORTH to SOUTH:` : `Arrange these places from WEST to EAST:`;
+        let sorted = [...arrangeSet].sort((a,b) => modeNS ? b.lat - a.lat : a.lng - b.lng); currentCorrectAnswer = sorted.map(x => x.id).join(','); arrangeQueue = [];
+        const targetDiv = document.createElement('div'); targetDiv.className = 'arrange-target'; targetDiv.id = 'arrange-target'; targetDiv.innerHTML = '<span style="color:#94a3b8; font-size:0.8rem;">Selected order will appear here...</span>';
+        const sourceDiv = document.createElement('div'); sourceDiv.className = 'arrange-container';
+        arrangeSet.forEach(item => {
+          drawQuizMarker(item); const btn = document.createElement('div'); btn.className = 'arrange-item'; btn.innerText = item.name;
+          btn.onclick = () => {
+            if(arrangeQueue.length === 0) targetDiv.innerHTML = '';
+            arrangeQueue.push(item.id); btn.style.display = 'none'; const clone = document.createElement('div'); clone.className = 'arrange-item'; clone.innerText = item.name; targetDiv.appendChild(clone);
+            if(arrangeQueue.length === arrangeSet.length) submitArrange();
+          };
+          sourceDiv.appendChild(btn);
+        });
+        optContainer.appendChild(targetDiv); optContainer.appendChild(sourceDiv);
+        const groupBounds = new L.featureGroup(arrangeSet.map(x => L.marker([x.lat, x.lng]))); map.fitBounds(groupBounds.getBounds().pad(0.5));
+      }
+    }
+
+    function showFeedback(isCorrect, rightAnswerText) {
+      const fb = document.getElementById('quiz-feedback'); fb.style.display = 'block';
+      if(isCorrect) { score++; fb.innerText = "✅ Correct!"; fb.style.color = "var(--color-success)"; fb.style.backgroundColor = "#dcfce7"; } 
+      else { fb.innerHTML = `❌ Incorrect.<br><span style="font-size:0.85rem; font-weight:normal;">Correct answer: <strong>${rightAnswerText}</strong></span>`; fb.style.color = "var(--color-danger)"; fb.style.backgroundColor = "#fee2e2"; }
+      document.getElementById('quiz-score').innerText = `Score: ${score}`; document.getElementById('quiz-next-btn').style.display = 'block';
+    }
+
+    function submitUPSC(btnClicked, selectedText) { const btns = document.getElementById('quiz-interactive-area').firstChild.children; for(let b of btns) { b.disabled = true; if(b.innerText === currentCorrectAnswer) b.classList.add('correct'); } if(selectedText !== currentCorrectAnswer) btnClicked.classList.add('wrong'); showFeedback(selectedText === currentCorrectAnswer, currentCorrectAnswer); }
+    function submitIdentify() { const input = document.getElementById('quiz-text-input'); input.disabled = true; const userAns = input.value.trim().toLowerCase(); const isCorrect = userAns.length > 2 && currentCorrectAnswer.includes(userAns); showFeedback(isCorrect, quizPool[qIndex].name); }
+    function submitFill() { const input = document.getElementById('quiz-text-input'); input.disabled = true; const userAns = input.value.trim().toLowerCase().split(',').map(s=>s.trim()); const correctArr = currentCorrectAnswer.split(',').map(s=>s.trim()); let matches = 0; userAns.forEach(ua => { if(correctArr.some(ca => ca.includes(ua) || ua.includes(ca)) && ua.length > 2) matches++; }); const isCorrect = matches >= Math.ceil(correctArr.length / 2); showFeedback(isCorrect, currentCorrectAnswer.toUpperCase()); }
+    function submitArrange() { const userOrder = arrangeQueue.join(','); const correctIds = currentCorrectAnswer.split(','); const correctNames = correctIds.map(id => places.find(p => p.id == id).name).join(' ➔ '); showFeedback(userOrder === currentCorrectAnswer, correctNames); }
+    function nextQuestion() { qIndex++; loadQuestion(); }
+
+    initFilters(); renderApp();
+  </script>
+</body>
+</html>
